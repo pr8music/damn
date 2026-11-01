@@ -108,7 +108,8 @@ class GeminiAPI {
         systemPrompt: String,
         conversationHistory: [(userPlaceholder: String, assistantResponse: String)],
         userPrompt: String,
-        maxOutputTokens: Int
+        maxOutputTokens: Int,
+        structuredOutput: Bool
     ) -> [String: Any] {
 
         var contents: [[String: Any]] = []
@@ -133,11 +134,61 @@ class GeminiAPI {
         currentParts.append(["text": userPrompt])
         contents.append(["role": "user", "parts": currentParts])
 
+        var generationConfig: [String: Any] = [
+            "maxOutputTokens": maxOutputTokens,
+            "temperature": structuredOutput ? 0.55 : 0.7
+        ]
+        if structuredOutput {
+            generationConfig["responseMimeType"] = "application/json"
+            generationConfig["responseSchema"] = [
+                "type": "OBJECT",
+                "properties": [
+                    "s": [
+                        "type": "ARRAY",
+                        "maxItems": 5,
+                        "items": [
+                            "type": "OBJECT",
+                            "properties": [
+                                "t": ["type": "STRING"],
+                                "p": [
+                                    "type": "OBJECT",
+                                    "properties": [
+                                        "x": ["type": "NUMBER"],
+                                        "y": ["type": "NUMBER"],
+                                        "l": ["type": "STRING"],
+                                        "n": ["type": "INTEGER"]
+                                    ],
+                                    "required": ["x", "y"]
+                                ],
+                                "d": [
+                                    "type": "ARRAY",
+                                    "maxItems": 4,
+                                    "items": [
+                                        "type": "OBJECT",
+                                        "properties": [
+                                            "k": ["type": "STRING", "enum": ["c", "b", "a", "l"]],
+                                            "v": ["type": "ARRAY", "items": ["type": "NUMBER"]],
+                                            "l": ["type": "STRING"],
+                                            "n": ["type": "INTEGER"]
+                                        ],
+                                        "required": ["k", "v"]
+                                    ]
+                                ],
+                                "g": ["type": "STRING"]
+                            ],
+                            "required": ["t"]
+                        ]
+                    ]
+                ],
+                "required": ["s"]
+            ]
+        }
+
         return [
             "system_instruction": ["parts": [["text": systemPrompt]]],
             "contents": contents,
             // Thinking tokens can count toward this limit, so keep it roomy.
-            "generationConfig": ["maxOutputTokens": maxOutputTokens]
+            "generationConfig": generationConfig
         ]
     }
 
@@ -178,6 +229,7 @@ class GeminiAPI {
         systemPrompt: String,
         conversationHistory: [(userPlaceholder: String, assistantResponse: String)] = [],
         userPrompt: String,
+        structuredOutput: Bool = false,
         onTextChunk: @MainActor @Sendable (String) -> Void
     ) async throws -> (text: String, duration: TimeInterval) {
         let startTime = Date()
@@ -190,7 +242,8 @@ class GeminiAPI {
             systemPrompt: systemPrompt,
             conversationHistory: conversationHistory,
             userPrompt: userPrompt,
-            maxOutputTokens: 4096
+            maxOutputTokens: 2048,
+            structuredOutput: structuredOutput
         )
         let bodyData = try JSONSerialization.data(withJSONObject: body)
         request.httpBody = bodyData
@@ -264,7 +317,8 @@ class GeminiAPI {
         images: [(data: Data, label: String)],
         systemPrompt: String,
         conversationHistory: [(userPlaceholder: String, assistantResponse: String)] = [],
-        userPrompt: String
+        userPrompt: String,
+        structuredOutput: Bool = false
     ) async throws -> (text: String, duration: TimeInterval) {
         let startTime = Date()
 
@@ -276,7 +330,8 @@ class GeminiAPI {
             systemPrompt: systemPrompt,
             conversationHistory: conversationHistory,
             userPrompt: userPrompt,
-            maxOutputTokens: 1024
+            maxOutputTokens: 1024,
+            structuredOutput: structuredOutput
         )
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -328,7 +383,10 @@ class GeminiAPI {
             "system_instruction": ["parts": [["text": systemPrompt]]],
             "contents": [["role": "user", "parts": [["text": requestText]]]],
             // Diagrams are long, and thinking tokens count toward this limit.
-            "generationConfig": ["maxOutputTokens": 16000]
+            "generationConfig": [
+                "maxOutputTokens": 16000,
+                "temperature": 0.25
+            ]
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         print("📐 Diagram request (\(resolvedModelID())): \(description)")

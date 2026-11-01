@@ -19,18 +19,18 @@ struct CompanionPanelView: View {
             panelHeader
             Divider()
                 .background(DS.Colors.borderSubtle)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 18)
 
-            permissionsCopySection
-                .padding(.top, 16)
-                .padding(.horizontal, 16)
+            heroCard
+                .padding(.top, 14)
+                .padding(.horizontal, 18)
 
             if companionManager.hasCompletedOnboarding && companionManager.allPermissionsGranted {
                 Spacer()
-                    .frame(height: 12)
+                    .frame(height: 14)
 
                 modelPickerRow
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 18)
             }
 
             if !companionManager.allPermissionsGranted {
@@ -38,7 +38,7 @@ struct CompanionPanelView: View {
                     .frame(height: 16)
 
                 settingsSection
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 18)
             }
 
             if !companionManager.hasCompletedOnboarding && companionManager.allPermissionsGranted {
@@ -46,7 +46,7 @@ struct CompanionPanelView: View {
                     .frame(height: 16)
 
                 startButton
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 18)
             }
 
             // Show Clicky toggle — hidden for now
@@ -63,7 +63,7 @@ struct CompanionPanelView: View {
                     .frame(height: 16)
 
                 dmFarzaButton
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 18)
             }
 
             Spacer()
@@ -71,13 +71,13 @@ struct CompanionPanelView: View {
 
             Divider()
                 .background(DS.Colors.borderSubtle)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 18)
 
             footerSection
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 14)
         }
-        .frame(width: 320)
+        .frame(width: 360)
         .background(panelBackground)
     }
 
@@ -86,22 +86,41 @@ struct CompanionPanelView: View {
     private var panelHeader: some View {
         HStack {
             HStack(spacing: 8) {
-                // Animated status dot
-                Circle()
-                    .fill(statusDotColor)
-                    .frame(width: 8, height: 8)
-                    .shadow(color: statusDotColor.opacity(0.6), radius: 4)
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [DS.Colors.blue400, DS.Colors.accent],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                .frame(width: 24, height: 24)
+                .shadow(color: DS.Colors.accent.opacity(0.35), radius: 8)
 
-                Text("Clicky")
-                    .font(.system(size: 14, weight: .semibold))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Clicky")
+                        .font(.system(size: 14, weight: .bold))
+                    Text("your screen-sidekick")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(DS.Colors.textTertiary)
+                }
                     .foregroundColor(DS.Colors.textPrimary)
             }
 
             Spacer()
 
-            Text(statusText)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(DS.Colors.textTertiary)
+            Text(statusText.uppercased())
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .tracking(0.6)
+                .foregroundColor(statusDotColor)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(statusDotColor.opacity(0.12)))
 
             Button(action: {
                 NotificationCenter.default.post(name: .clickyDismissPanel, object: nil)
@@ -120,6 +139,45 @@ struct CompanionPanelView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
+    }
+
+    private var heroCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            permissionsCopySection
+
+            if companionManager.hasCompletedOnboarding && companionManager.allPermissionsGranted {
+                HStack(spacing: 7) {
+                    Image(systemName: "keyboard")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(DS.Colors.accentText)
+                    Text("Hold")
+                        .foregroundColor(DS.Colors.textTertiary)
+                    Text("⌃ Option")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(DS.Colors.textPrimary)
+                    Text("to talk")
+                        .foregroundColor(DS.Colors.textTertiary)
+                }
+                .font(.system(size: 11, weight: .medium))
+                .padding(.top, 2)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: DS.CornerRadius.extraLarge, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [DS.Colors.surface2, DS.Colors.surface1],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: DS.CornerRadius.extraLarge, style: .continuous)
+                        .stroke(DS.Colors.borderSubtle.opacity(0.8), lineWidth: 0.7)
+                )
+        )
     }
 
     // MARK: - Permissions Copy
@@ -244,9 +302,10 @@ struct CompanionPanelView: View {
 
     private var settingsSection: some View {
         VStack(spacing: 2) {
-            Text("PERMISSIONS")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundColor(DS.Colors.textTertiary)
+            Text("GETTING STARTED")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .tracking(0.8)
+                .foregroundColor(DS.Colors.accentText)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.bottom, 6)
 
