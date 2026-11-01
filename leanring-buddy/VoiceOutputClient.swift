@@ -86,7 +86,11 @@ final class VoiceOutputClient {
     private func speakAndWait(_ text: String, voice: AVSpeechSynthesisVoice?) async -> Bool {
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = voice
-        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        utterance.rate = 0.47
+        utterance.pitchMultiplier = 1.02
+        utterance.volume = 1.0
+        utterance.preUtteranceDelay = 0.04
+        utterance.postUtteranceDelay = 0.12
         synthesizer.speak(utterance)
 
         // isSpeaking can lag a moment behind speak(), so wait up to one second.
@@ -159,6 +163,22 @@ final class VoiceOutputClient {
         result = result
             .replacingOccurrences(of: "**", with: "")
             .replacingOccurrences(of: "`", with: "")
+            .replacingOccurrences(of: "—", with: ", ")
+            .replacingOccurrences(of: "–", with: ", ")
+            .replacingOccurrences(of: "…", with: "...")
+            .replacingOccurrences(of: "e.g.", with: "for example")
+            .replacingOccurrences(of: "i.e.", with: "that is")
+
+        // Keep generated replies conversational when a model emits dense
+        // paragraph breaks or repeated whitespace.
+        result = result
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+
+        if !result.isEmpty, !result.hasSuffix(".") && !result.hasSuffix("?") && !result.hasSuffix("!") {
+            result += "."
+        }
 
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }

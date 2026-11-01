@@ -3,11 +3,12 @@
 //  leanring-buddy
 //
 //  Everything for step-by-step spoken guidance and on-screen drawing:
-//    1. GuidanceParser   splits the AI's reply into steps (speech + point + drawings)
+//    1. GuidanceParser   splits compact JSON or legacy tagged replies into steps
+//                         (speech + point + drawings)
 //    2. ScreenAnnotation a shape ready to draw on one screen
 //    3. AnnotationLayerView draws the shapes on the overlay, with a "pen stroke" animation
 //
-//  Reply format the AI uses (see the system prompt in CompanionManager):
+//  Legacy reply format (the current voice path uses compact JSON):
 //    [POINT:x,y:label:screenN]
 //    [DRAW:circle:x,y,radius:label:screenN]
 //    [DRAW:box:x,y,width,height:label:screenN]
@@ -79,6 +80,10 @@ enum GuidanceParser {
 
     /// Splits a reply into steps. Text that comes after a tag starts a new step.
     static func parse(_ response: String) -> [GuidanceStep] {
+        if let structuredSteps = parseStructuredResponse(response) {
+            return structuredSteps
+        }
+
         guard let regex = try? NSRegularExpression(pattern: tagPattern, options: [.caseInsensitive]) else {
             return StepBuilder.singleSpokenStep(response)
         }
@@ -116,11 +121,162 @@ enum GuidanceParser {
         return Array(builder.finish().prefix(maxSteps))
     }
 
+    /// Parses the compact JSON contract used by Gemini Flash and Flash-Lite.
+    /// Keeping this separate from the legacy tag parser lets older prompts and
+    /// cached responses continue to work during model/provider transitions.
+    private static func parseStructuredResponse(_ response: String) -> [GuidanceStep]? {
+        let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let jsonText: String
+        if trimmed.hasPrefix("```") {
+            jsonText = trimmed
+                .replacingOccurrences(of: #"^```(?:json)?\s*"#, with: "", options: .regularExpression)
+                .replacingOccurrences(of: #"\s*```$"#, with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            // Flash-Lite occasionally adds one short sentence before valid JSON
+            // despite the response MIME type. Keep the structured payload when
+            // the boundaries are unambiguous instead of speaking the JSON aloud.
+            if let start = trimmed.firstIndex(of: "{"),
+               let end = trimmed.lastIndex(of: "}"),
+               start < end {
+                jsonText = String(trimmed[start...end])
+            } else {
+                jsonText = trimmed
+            }
+        }
+
+        guard let data = jsonText.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(CompactGuidanceResponse.self, from: data),
+              !payload.steps.isEmpty else {
+            return nil
+        }
+
+        let steps = payload.steps.prefix(maxSteps).compactMap { item -> GuidanceStep? in
+            let point = item.point.flatMap { point -> GuidancePointAction? in
+                guard point.x.isFinite, point.y.isFinite else { return nil }
+                return GuidancePointAction(
+                    coordinate: CGPoint(x: point.x, y: point.y),
+                    label: normalizedLabel(point.label),
+                    screenNumber: point.screen
+                )
+            }
+
+            let drawings = item.drawings.prefix(maxDrawingsPerStep).compactMap { drawing -> GuidanceDrawAction? in
+                guard let kind = annotationKind(for: drawing.kind) else { return nil }
+                let values = drawing.values.map(CGFloat.init)
+                let requiredCount = kind == .circle ? 3 : 4
+                guard values.count == requiredCount, values.allSatisfy(\.isFinite) else { return nil }
+                switch kind {
+                case .circle:
+                    guard values[2] >= 4 else { return nil }
+                case .box:
+                    guard values[2] >= 4, values[3] >= 4 else { return nil }
+                case .arrow, .line:
+                    guard hypot(values[2] - values[0], values[3] - values[1]) >= 6 else { return nil }
+                }
+                return GuidanceDrawAction(
+                    kind: kind,
+                    values: values,
+                    label: normalizedLabel(drawing.label),
+                    screenNumber: drawing.screen
+                )
+            }
+
+            let spokenText = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !spokenText.isEmpty || point != nil || !drawings.isEmpty || item.diagram != nil else {
+                return nil
+            }
+            return GuidanceStep(
+                spokenText: spokenText,
+                point: point,
+                drawings: drawings,
+                diagram: item.diagram?.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        }
+
+        return steps.isEmpty ? nil : Array(steps)
+    }
+
+    private static func normalizedLabel(_ label: String?) -> String? {
+        guard let label else { return nil }
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty || trimmed.lowercased() == "none" ? nil : trimmed
+    }
+
+    private static func annotationKind(for value: String) -> AnnotationKind? {
+        switch value.lowercased() {
+        case "c", "circle": return .circle
+        case "b", "box": return .box
+        case "a", "arrow": return .arrow
+        case "l", "line": return .line
+        default: return nil
+        }
+    }
+
     // MARK: Tag parsing
 
     private static func splitBody(_ body: String) -> [String] {
         body.split(separator: ":", omittingEmptySubsequences: false)
             .map { String($0).trimmingCharacters(in: .whitespaces) }
+    }
+
+    private struct CompactGuidanceResponse: Decodable {
+        let steps: [CompactGuidanceStep]
+
+        enum CodingKeys: String, CodingKey {
+            case steps = "s"
+        }
+    }
+
+    private struct CompactGuidanceStep: Decodable {
+        let text: String
+        let point: CompactPoint?
+        let drawings: [CompactDrawing]
+        let diagram: String?
+
+        enum CodingKeys: String, CodingKey {
+            case text = "t"
+            case point = "p"
+            case drawings = "d"
+            case diagram = "g"
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+            point = try container.decodeIfPresent(CompactPoint.self, forKey: .point)
+            drawings = try container.decodeIfPresent([CompactDrawing].self, forKey: .drawings) ?? []
+            diagram = try container.decodeIfPresent(String.self, forKey: .diagram)
+        }
+    }
+
+    private struct CompactPoint: Decodable {
+        let x: Double
+        let y: Double
+        let label: String?
+        let screen: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case x, y
+            case label = "l"
+            case screen = "n"
+        }
+    }
+
+    private struct CompactDrawing: Decodable {
+        let kind: String
+        let values: [Double]
+        let label: String?
+        let screen: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case kind = "k"
+            case values = "v"
+            case label = "l"
+            case screen = "n"
+        }
     }
 
     private static func parsePoint(body: String) -> GuidancePointAction? {

@@ -56,15 +56,18 @@ enum DiagramPrompt {
 
     static func system(threeJSAvailable: Bool) -> String {
         let basePrompt = """
-        you are a diagram artist for a small floating window, about 760 by 560 pixels, with a dark background. you get a request describing what to draw. reply with ONLY an html fragment: no markdown fences, no explanation, and no html, head, or body tags. it is placed inside a page that already has a dark theme, so never set a page background.
+        you are a precise information designer for a small floating window, about 760 by 560 pixels, with a dark background. you get a request describing what to draw. first reason privately about the entities, relationships, direction, order, and visual type. then reply with ONLY an html fragment: no markdown fences, no explanation, and no html, head, or body tags. it is placed inside a page that already has a dark theme, so never set a page background.
 
         hard rules:
         - everything must be self-contained: inline svg, css in a style tag, and optional inline script. never use external files, images, fonts, links, network requests, or cdn urls. they are all blocked.
         - colors: use these css variables so everything matches: var(--accent) blue, var(--green), var(--amber), var(--red), var(--violet), var(--text), var(--muted), var(--line), var(--panel), var(--bg). text must be at least 13px with strong contrast on dark. use font-family inherit.
-        - start with a short title in an h2, then the diagram, then optionally a one-line caption in var(--muted).
-        - keep it clean: aligned shapes, even spacing, labeled arrows (use svg marker arrowheads), no overlapping text, about twelve nodes at most. prefer an svg with a viewBox and width="100%" so it fits about 720 pixels wide.
-        - use the exact labels from the request. do not invent facts. if you are unsure about a detail, leave it out.
-        - animation is welcome when it explains something, like a dot traveling along an arrow or a pulsing node, using css animations or small scripts. keep it subtle, and make sure the end state is fully readable.
+        - start with a short title in an h2, then the diagram, then optionally a one-line caption in var(--muted). Make the title specific, not generic.
+        - keep it clean: use a consistent grid, generous padding, aligned shapes, even spacing, and clear visual hierarchy. Keep related items close and unrelated items separated. Use labeled arrows with SVG marker arrowheads. Never let an arrow pass through a node or label. Avoid crossing lines, clipped text, tiny labels, and decorative elements that compete with the explanation. Keep to about twelve nodes at most.
+        - use the exact labels and relationships from the request. do not invent facts, values, steps, dependencies, or examples. if the request does not provide numeric data, do not draw numeric axes or pretend to have measurements; use a qualitative diagram instead. if you are unsure about a detail, leave it out.
+        - for flows and architectures, arrange the main direction left-to-right or top-to-bottom, number ordered stages only when the order matters, and make arrow direction unambiguous. for comparisons, use equal-width columns with matching rows. for timelines, use a single axis with dates or labels supplied by the request. for charts, show units and a truthful scale only when values were supplied.
+        - put labels inside roomy cards where possible. If a label is long, wrap it into two or three lines instead of shrinking the font. Keep every label inside its shape and leave a visible gap around arrows.
+        - use a viewBox with a little internal margin and width="100%" so it fits about 720 pixels wide. Prefer a viewBox around 720 by 420 for ordinary diagrams and use the available height rather than packing everything into a thin strip.
+        - animation is welcome only when it explains something, like a dot traveling along an arrow or a pulsing node, using css animations or small scripts. keep it subtle, pause or stop it on interaction when practical, and make sure the static end state is fully readable.
 
         choosing a style:
         - flows, architectures, timelines, comparisons, cycles, hierarchies, charts, and maps: inline svg.
@@ -74,7 +77,7 @@ enum DiagramPrompt {
 
         let threePrompt = """
 
-        - real 3d with webgl: three.js release 128 is available as the global THREE. there is no OrbitControls and there are no loaders. create a renderer sized to a container div of about 720 by 420 pixels, append renderer.domElement to it, add an AmbientLight and a DirectionalLight, and call clickyDrag(renderer.domElement, function (dx, dy) { group.rotation.y += dx * 0.01; group.rotation.x += dy * 0.01; }) so the user can drag to rotate. add labels as absolutely positioned html elements over the canvas. use three.js for spheres, solids, molecules, planets, and anything with real depth, and css 3d for simple stacks and boxes.
+        - real 3d with webgl: three.js release 128 is available as the global THREE. there is no OrbitControls and there are no loaders. create a renderer sized to a container div of about 720 by 420 pixels, append renderer.domElement to it, add an AmbientLight and a DirectionalLight, and call clickyDrag(renderer.domElement, function (dx, dy) { group.rotation.y += dx * 0.01; group.rotation.x += dy * 0.01; }) so the user can drag to rotate. add labels as absolutely positioned html elements over the canvas, but only label surfaces that remain readable from the initial camera angle. use three.js for spheres, solids, molecules, planets, and anything with real depth, and css 3d for simple stacks and boxes. include a small "drag to rotate" hint only when the object is actually draggable.
         """
 
         return threeJSAvailable ? basePrompt + threePrompt : basePrompt
@@ -208,10 +211,18 @@ enum DiagramHTML {
     * { box-sizing: border-box; }
     html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; font-size: 14px; }
     body { padding: 16px; }
-    h1, h2, h3 { margin: 0 0 10px; font-weight: 600; }
-    h2 { font-size: 18px; }
-    svg { max-width: 100%; height: auto; }
+    h1, h2, h3 { margin: 0 0 12px; font-weight: 650; letter-spacing: -0.01em; }
+    h2 { font-size: 19px; }
+    svg { display: block; width: 100%; max-width: 100%; height: auto; overflow: visible; }
     svg text { font-family: inherit; fill: var(--text); }
+    svg .node { stroke: var(--line); stroke-width: 1.5; }
+    svg .label { font-size: 14px; font-weight: 600; }
+    svg .caption { font-size: 12px; fill: var(--muted); }
+    svg .edge { fill: none; stroke: var(--muted); stroke-width: 2; }
+    svg .edge-label { font-size: 12px; fill: var(--muted); }
+    svg marker path { fill: var(--muted); }
+    .clicky-caption { margin: 10px 2px 0; color: var(--muted); font-size: 13px; line-height: 1.4; }
+    .scene { border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(145deg, rgba(51,128,255,.08), rgba(23,28,35,.85)); overflow: hidden; }
     .scene { perspective: 900px; display: flex; align-items: center; justify-content: center; min-height: 420px; user-select: none; }
     .world { position: relative; transform-style: preserve-3d; transform: rotateX(var(--rx, -20deg)) rotateY(var(--ry, 30deg)); }
     """
