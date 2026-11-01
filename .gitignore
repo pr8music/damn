@@ -1,0 +1,20 @@
+.DS_Store
+
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+*.xcuserdatad/
+
+# Release output
+releases/
+
+# Node / Wrangler
+node_modules/
+.wrangler/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
